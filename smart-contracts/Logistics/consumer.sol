@@ -17,8 +17,8 @@ contract Consumer is Operator {
   }
 
   mapping (address=>mapping(string=>string)) consumer_subscription_analysis;
-  mapping (address=>string[]) consumer_subscription;
-  mapping (address => mapping(string => payment)) consumer_payment;
+  mapping (address=>bool) consumer_subscription;
+  mapping (address => payment) consumer_payment;
   mapping (string => uint256) hash_sub_count;
 
   string[] public registered_malware;
@@ -41,67 +41,60 @@ contract Consumer is Operator {
   }
 
   modifier requireNotSubscribed(string ipfshash) {
-    (bool found,) = getSubIndex(msg.sender, ipfshash);
+    bool found = consumer_subscription[msg.sender];
     require(!found, "already subscribed");
     _;
   }
 
   modifier requireSubscribed(string ipfshash) {
-    (bool found,) = getSubIndex(msg.sender, ipfshash);
+    bool found = consumer_subscription[msg.sender]; 
     require(found, "not subscribed");
     _;
   }
   
   modifier checkSubscription(string ipfshash) {
-    (bool found, uint256 index) = getSubIndex(msg.sender, ipfshash);
+    bool found = consumer_subscription[msg.sender];
     require(found, "not subscribed");
-    require(consumer_payment[msg.sender][ipfshash].lastPayment+ONE_DAY*subPeriod>block.timestamp, "expired");
+    require(consumer_payment[msg.sender].lastPayment+ONE_DAY*subPeriod>block.timestamp, "expired");
       _;
   }
 
-  function checkAndUpdateSubscription(string ipfshash) public {
-    (bool found, uint256 index) = getSubIndex(msg.sender, ipfshash);
+  function checkAndUpdateSubscription(address consumer) public {
+    bool found = consumer_subscription[consumer];
     if (!found) return;
-    if (consumer_payment[msg.sender][ipfshash].lastPayment+ONE_DAY*subPeriod<block.timestamp) {
-      delete consumer_subscription_analysis[msg.sender][ipfshash];
-      consumer_subscription[msg.sender][index] = consumer_subscription[msg.sender][consumer_subscription[msg.sender].length-1];
-      delete consumer_subscription[msg.sender][consumer_subscription[msg.sender].length-1];
-      consumer_subscription[msg.sender].length--;
+    if (consumer_payment[consumer].lastPayment+ONE_DAY*subPeriod<block.timestamp) {
+      clearAnalysis(msg.sender);
+      consumer_subscription[consumer]=false;
     }
-    
+  }
+  
+  function clearAnalysis(address consumer) internal {
+    for (uint256 i=0;i<registered_malware.length;i++) {
+        delete consumer_subscription_analysis[consumer][registered_malware[i]];
+    }
   }
 
   constructor(IERC20 _token) public {
     token = _token;
   }
 
-  function subscribe(string ipfsHash) public {
-    (bool found,) = getMalwareIndex(ipfsHash);
-    require(found, "malware doesnt exists");
+  function subscribe() public {
+    
     token.safeTransferFrom(msg.sender, address(this) ,subCost);
     
-    consumer_payment[msg.sender][ipfsHash].lastPayment = block.timestamp;
-    consumer_payment[msg.sender][ipfsHash].lastAmount = subCost;
+    consumer_payment[msg.sender].lastPayment = block.timestamp;
+    consumer_payment[msg.sender].lastAmount = subCost;
 
-    if (consumer_payment[msg.sender][ipfsHash].lastPayment>0) {
-      consumer_payment[msg.sender][ipfsHash].totalAmount += subCost;
+    if (consumer_payment[msg.sender].lastPayment>0) {
+      consumer_payment[msg.sender].totalAmount += subCost;
     }
     
-    consumer_subscription[msg.sender].push(ipfsHash);
+    consumer_subscription[msg.sender]=true;
   }
 
   function getMalwareIndex(string malware) public view returns(bool,uint256) {
     for (uint256 i=0;i<registered_malware.length;i++) {
       if (compareStrings(registered_malware[i],malware)) {
-        return (true, i);
-      }
-    }
-    return (false, 0);
-  }
-
-  function getSubIndex(address consumer, string ipfshash) public view returns(bool,uint256) {
-    for (uint256 i=0;i<consumer_subscription[consumer].length;i++) {
-      if (compareStrings(consumer_subscription[consumer][i],ipfshash)) {
         return (true, i);
       }
     }
