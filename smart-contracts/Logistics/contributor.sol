@@ -1,10 +1,14 @@
 pragma solidity 0.4.24;
 
 import "./Operator.sol";
+import "./SafeERC20.sol";
 import "./IERC20.sol";
+
+
 
 contract Contributor is Operator {
 
+  using SafeERC20 for IERC20;
 
   struct malware {
     address contributor;
@@ -96,7 +100,6 @@ contract Contributor is Operator {
         emit TokenDistributed(ipfsHash, malwares[ipfsHash].contributor, earnings);
       }
     }
-
   }
 
 }
